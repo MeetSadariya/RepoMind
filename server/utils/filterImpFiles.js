@@ -16,7 +16,7 @@ function filterImpFiles(files){
         "PHP",
         "Ruby",
         "Dart (Flutter)",
-        "Markdown as",
+        "Markdown",
         "Markdown (README)",
         "JSON",
         "YAML",
@@ -34,15 +34,15 @@ function filterImpFiles(files){
         "composer.lock",
     ];
 
-    return files.filter((files)=>{
-        const base = files.path.split('/').pop();
+    return files.filter((file)=>{
+        const base = file.path.split('/').pop();
 
         if(ignoreNames.includes(base)) return false;
 
-        if(!impLangs.includes(files.lang)) return false;
+        if(!impLangs.includes(file.lang)) return false;
 
-        if(files.sizeKB < 0.1) return false;
-        if(files.sizeKB > 500) return false;
+        if(file.sizeKB < 0.1) return false;
+        if(file.sizeKB > 500) return false;
 
         return true;
     });

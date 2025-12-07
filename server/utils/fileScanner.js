@@ -3,6 +3,9 @@ const path = require("path");
 
 function scanFiles(dir) {
     const result = [];
+    
+    // Resolve dir to absolute path for consistent path handling
+    const absoluteDir = path.resolve(dir);
 
     const ignoreDirs = [
         "node_modules",
@@ -115,13 +118,22 @@ function scanFiles(dir) {
     }
 
     function walk(filePath) {
-        const stat = fs.statSync(filePath);
+        let stat;
+        try{
+            stat = fs.lstatSync(filePath);
+        }
+        catch(e){
+            return;
+        }
 
-        if (stat.isDirectory()) {
+        if(stat.isSymbolicLink()){
+            return;
+        }
+
+        if(stat.isDirectory()){
             const base = path.basename(filePath);
 
-            // Skip ignored directories
-            if (ignoreDirs.includes(base)) {
+            if(ignoreDirs.includes(base)){
                 return;
             }
 
@@ -129,31 +141,32 @@ function scanFiles(dir) {
             children.forEach((child) => {
                 walk(path.join(filePath, child));
             });
-        } else {
+        }
+        else{
             const ext = path.extname(filePath);
 
-            // Skip ignored file types
-            if (ignoreExtensions.includes(ext)) {
+            if(ignoreExtensions.includes(ext)){
                 return;
             }
-
+            
             const fileName = path.basename(filePath);
+            let lang = languageMap[ext] || detectSpecialFiles(fileName) || "Unknown";
 
-            // languageMap + detectSpecialFiles already used here
-            let lang = languageMap[ext];
-            if (!lang) lang = detectSpecialFiles(fileName) || "Unknown";
+            // Get relative path from the base directory
+            const relativePath = path.relative(absoluteDir, filePath);
+            // Normalize to use forward slashes (for consistency across platforms)
+            const normalizedPath = relativePath.split(path.sep).join('/');
 
             result.push({
-                path: filePath.replace(dir, "").replace(/^[\\/]/, ""),
+                path: normalizedPath,
                 ext,
                 sizeKB: Number((stat.size / 1024).toFixed(2)),
                 lang,
-            });
-        }
-
+            })
+     }
     }
 
-    walk(dir);
+    walk(absoluteDir);
     return result;
 }
 

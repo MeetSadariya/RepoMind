@@ -9,6 +9,8 @@ function App() {
   const [ isSubmitting, setIsSubmitting ] = useState(false);
   const [ jobStatus, setJobStatus ] = useState(null);
   const [ jobResult, setJobResult ] = useState(null);
+  const [ docs, setdocs ] = useState([]);
+  const [ isGeneratingDOcs, setIsGeneratingDocs ] = useState(false);
 
   const handleSubmit =  async (e) => {
     e.preventDefault();
@@ -98,6 +100,47 @@ function App() {
     }
   }
 
+  const handleGenerateDocs = async () => {
+    if(!jobId) return;
+
+    setIsGeneratingDocs(true);
+    setMessage("");
+    setMessageType("");
+
+    try{
+      const response = await fetch(`http://localhost:4000/jobs/${jobId}/read-files`);
+      const readData = await response.json();
+
+      if(!response.ok){
+        setMessage(readData.error || "Failed to read file");
+        setMessageType("error");
+        setIsGeneratingDocs(false);
+        return;
+      }
+
+      const genRes = await fetch(`http://localhost:4000/jobs/${jobId}/generate-docs`,{
+        method: "POST",
+      });
+      const genData = await genRes.json();
+
+      if(genRes.ok){
+        setdocs(genData.docs || []);
+        setMessage("Docs generated");
+        setMessageType("success");
+      }
+      else{
+        setMessage(genData.error || "Failed to generate docs");
+        setMessageType("error");
+      }
+    }
+    catch(err){
+      console.error(err);
+      setMessage("Error while generating docs");
+      setMessageType("error");
+    }
+    setIsGeneratingDocs(false);
+  }
+
   useEffect( () => {
     if(!jobId) return;
 
@@ -162,6 +205,15 @@ function App() {
           Check Job Status
         </button>
 
+        <button
+          type="button"
+          onClick={handleGenerateDocs}
+          style={{marginTop:"8px", marginLeft:"8px"}}
+          disabled={isGeneratingDOcs}
+        >
+          {isGeneratingDOcs ? "Generating docs..." : "Generate Docs"}
+        </button>
+
         {jobStatus && (
          <p style={{ marginTop: "8px" }}>
           Current job status : <strong>{jobStatus}</strong>
@@ -178,6 +230,47 @@ function App() {
         )}
       </div>
     )}
+    {docs.lenth > 0 && (
+      <div style={{ margintop: "24px"}}>
+        <h2>Generated Documentation</h2>
+        <ul style={{ listStyle:"none", paddingLeft: 0}}>
+          {docs.map((docs) => {
+            <li
+              key={docs.path}
+              style={{
+                bborder: "1px solid #ddd",
+                borderradius: "8px",
+                padding: "12px",
+                marginBottom: "10px",
+              }}
+            >
+              <p>
+                <strong>File:</strong>{docs.path}
+              </p>
+              <p>
+                <strong>Language:</strong>{docs.lang}
+              </p>
+              <p>
+                <strong>Summary:</strong>{docs.summary}
+              </p>
+              {docs.details && (
+                <pre
+                  style={{
+                    background: "#f7f7f7",
+                    padding: "8px",
+                    borderRadius: "6px",
+                    whiteSpace: "pre-wrap"
+                  }}
+                >
+                  {docs.details}
+                </pre>
+              )}
+            </li>
+          })}
+        </ul>
+      </div>
+    )
+    }
   </div>
   );
 }

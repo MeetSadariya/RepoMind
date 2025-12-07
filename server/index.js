@@ -5,7 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const scanFiles = require("./utils/fileScanner");
 const filterImpFiles = require('./utils/filterImpFiles');
-const { error } = require('console');
+const readFileContent = require('./utils/readFileContent');
+const generateFakeDocs = require('./utils/generateFakeDocs');
 
 const app = express();
 app.use(cors());
@@ -108,8 +109,8 @@ app.get("/jobs/:id/imp-files", (req,res) => {
         return res.status(404).json({ error: "Job not found"});
     }
 
-    if(job.status !== "cloned" && job.status!== "processing" && job.status!== "completed"){
-        return res.status(400).json({error: "Repo is note ready yet"});
+    if(job.status !== "cloned" && job.status !== "processing" && job.status !== "completed"){
+        return res.status(400).json({error: "Repo is not ready yet"});
     }
 
     try{
@@ -122,7 +123,7 @@ app.get("/jobs/:id/imp-files", (req,res) => {
         res.json({files:imp});
     }
     catch (err){
-        console.log(err);
+        console.error(err);
         res.status(500).json({
             error: "failed to filter important files",
             details: err.message,
@@ -130,6 +131,70 @@ app.get("/jobs/:id/imp-files", (req,res) => {
     }
 });
 
+app.get("/jobs/:id/read-files", (req,res) => {
+    const job = jobs[req.params.id];
+
+    if(!job){
+        return res.status(404).json({
+            error: "Job not found"
+        });
+    }
+
+    if(!job.impFiles){
+        return res.status(400).json({
+            error: "Important files not generated. Please call /imp-files first"
+        });
+    }
+
+    try{
+        const fileData = readFileContent(job.impFiles, job.path);
+        job.fileContents = fileData;
+
+        res.json({
+            files: fileData
+        });
+    }
+    catch(err){
+        res.status(500).json({
+            error: "Failed to read file contents",
+            details: err.message
+        })
+    }
+}); 
+
+app.post("/jobs/:id/generate-docs", (req,res) => {
+    const job = jobs[req.params.id];
+
+    if(!job){
+        return res.status(404).json({ error: "Job not found" });
+    }
+
+    if(!job.fileContents){
+        return res.status(400).json({
+            error: "File contents not loaded. Call /read-files first",
+        });
+    }
+
+    try{
+        job.status = "ai-generating";
+
+        const docs = generateFakeDocs(job.fileContents);
+        job.docs = docs;
+
+        job.status = "docs-generated";
+
+        res.json({docs});
+    }
+    catch(err){
+        console.log(err);
+        job.status = "error";
+        return res.status(500).json({
+            error: "Failed to generate docs",
+            details: err.message,
+        })
+    }
+
+});
 
 const port = 4000;
 app.listen(port, () => {
