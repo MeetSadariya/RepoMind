@@ -111,7 +111,6 @@ app.post('/jobs', (req,res) => {
 
     console.log("New job created: ", jobId, repoUrl);
 
-    // Kick off async pipeline
     runJobPipeline(jobId);
 
     return res.json({
@@ -213,7 +212,6 @@ app.get("/jobs/:id/read-files", (req,res) => {
 }); 
 
 app.post("/jobs/:id/generate-docs", async (req,res) => {
-app.post("/jobs/:id/generate-docs", async (req,res) => {
     const job = jobs[req.params.id];
 
     if(!job){
@@ -229,9 +227,6 @@ app.post("/jobs/:id/generate-docs", async (req,res) => {
     try{
         job.status = "ai-generating";
 
-        const docs = await generateAIDocs(job.fileContents, (current, total, filePath) => {
-            console.log(`AI generating docs ${current}/${total} for ${filePath}`);
-        });
         const docs = await generateAIDocs(job.fileContents, (current, total, filePath) => {
             console.log(`AI generating docs ${current}/${total} for ${filePath}`);
         });
@@ -374,9 +369,6 @@ app.get("/jobs/:id/docs-list", (req,res) => {
      try{
         const docsDir = path.resolve(job.docsDir);
         const files = listDocs(docsDir);
-     try{
-        const docsDir = path.resolve(job.docsDir);
-        const files = listDocs(docsDir);
         return res.json({files});
     }
     catch(err){
@@ -401,32 +393,21 @@ app.get("/jobs/:id/docs-file", (req,res) => {
 
     if(!job.docsDir || !fs.existsSync(job.docsDir)){
         return res.status(400).json({
-            error: "Docs not found. Run /generate-docs and /save-docs first"
-            error: "Docs not found. Run /generate-docs and /save-docs first"
+            error: "Docs not found. Run /generate-docs and /save-docs first",
         });
     }
 
     const docsDir = path.resolve(job.docsDir);
     const fullPath = path.resolve(docsDir, filePath);
 
-    // Prevent path traversal outside docsDir
     if(!fullPath.startsWith(docsDir)){
         return res.status(400).json({ error: "Invalid file path" });
     }
-    const docsDir = path.resolve(job.docsDir);
-    const fullPath = path.resolve(docsDir, filePath);
-
-    // Prevent path traversal outside docsDir
-    if(!fullPath.startsWith(docsDir)){
-        return res.status(400).json({ error: "Invalid file path" });
-    }
-
+    
     try{
         if(!fs.existsSync(fullPath)){
-        if(!fs.existsSync(fullPath)){
             return res.status(404).json({
-                error: "Doc file not found"
-            });
+                error: "Doc file not found",
             });
         }
 
@@ -437,11 +418,9 @@ app.get("/jobs/:id/docs-file", (req,res) => {
         console.error(err);
         return res.status(500).json({
             error: "Failed to read doc file",
-            details: err.message
+            details: err.message,
         });
-        });
-    }
-});
+    };
 });
 
 
