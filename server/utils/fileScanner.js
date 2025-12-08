@@ -3,7 +3,7 @@ const path = require("path");
 
 function scanFiles(dir) {
     const result = [];
-    
+
     // Resolve dir to absolute path for consistent path handling
     const absoluteDir = path.resolve(dir);
 

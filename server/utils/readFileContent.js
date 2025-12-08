@@ -8,8 +8,8 @@ function readFileContent(impFiles, repoPath) {
   const absoluteRepoPath = path.resolve(repoPath);
 
   for (const file of impFiles) {
-    let fullPath = file.path;
-    
+      let fullPath = file.path;
+
     try {
       // If file.path is not absolute, join it with the resolved repo path
       if (!path.isAbsolute(file.path)) {

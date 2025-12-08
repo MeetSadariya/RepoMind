@@ -1,38 +1,114 @@
-.App {
-  text-align: center;
+body {
+  margin: 0;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background: #f8fafc;
+  color: #0f172a;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+.app {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
+.form {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
+.form input {
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+button {
+  background: #2563eb;
   color: white;
+  border: none;
+  padding: 10px 14px;
+  border-radius: 6px;
+  cursor: pointer;
 }
 
-.App-link {
-  color: #61dafb;
+button:disabled {
+  background: #93c5fd;
+  cursor: not-allowed;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.msg {
+  padding: 10px 12px;
+  border-radius: 6px;
+  margin: 8px 0;
+  font-size: 14px;
+}
+
+.msg.success { background: #ecfdf3; color: #15803d; border: 1px solid #bbf7d0; }
+.msg.error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecdd3; }
+.msg.info { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+
+.card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 12px;
+  background: white;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.actions a {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.docs {
+  margin-top: 20px;
+}
+
+.docs-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 12px;
+}
+
+.docs-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.docs-list li {
+  margin-bottom: 8px;
+}
+
+.docs-list button {
+  width: 100%;
+  text-align: left;
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.docs-viewer {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: white;
+  min-height: 180px;
+}
+
+.docs-viewer pre {
+  white-space: pre-wrap;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 10px;
+  border-radius: 6px;
+  overflow: auto;
 }

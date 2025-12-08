@@ -1,277 +1,207 @@
-import './App.css';
-import { useState, useEffect } from 'react';
+import "./App.css";
+import { useState, useEffect, useMemo } from "react";
+
+const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:4000";
+
+async function api(path, options = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const message = data.error || data.message || "Request failed";
+    const err = new Error(message);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
 
 function App() {
-  const [ repoUrl, setRepoUrl ] = useState("");
-  const [ message, setMessage ] = useState("");
-  const [ messageType, setMessageType ] = useState("");
-  const [ jobId, setJobId ] = useState(null);
-  const [ isSubmitting, setIsSubmitting ] = useState(false);
-  const [ jobStatus, setJobStatus ] = useState(null);
-  const [ jobResult, setJobResult ] = useState(null);
-  const [ docs, setdocs ] = useState([]);
-  const [ isGeneratingDOcs, setIsGeneratingDocs ] = useState(false);
+  const [repoUrl, setRepoUrl] = useState("");
+  const [jobId, setJobId] = useState(null);
+  const [jobStatus, setJobStatus] = useState(null);
+  const [jobResult, setJobResult] = useState(null);
+  const [docsList, setDocsList] = useState([]);
+  const [docContent, setDocContent] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("info");
 
-  const handleSubmit =  async (e) => {
-    e.preventDefault();
+  const hasDocs = useMemo(() => docsList.length > 0, [docsList]);
 
-    setMessage("");
-    setMessageType("");
+  const resetState = () => {
     setJobId(null);
     setJobStatus(null);
     setJobResult(null);
+    setDocsList([]);
+    setDocContent(null);
+  };
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setMessage("");
+    setMessageType("info");
+    resetState();
 
-    if(!repoUrl.trim()){
+    if (!repoUrl.trim()) {
       setMessage("Please enter a repository URL");
       setMessageType("error");
       return;
     }
-
-    if(!repoUrl.includes("github.com")){
-      setMessage("This doen't look like a Github URL");
+    if (!repoUrl.includes("github.com")) {
+      setMessage("This doesn't look like a GitHub URL");
       setMessageType("error");
       return;
     }
 
-    setIsSubmitting(true);
-    try{
-      const response = await fetch("http://localhost:4000/jobs", {
-        method:"POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({repoUrl}),
+    try {
+      setLoading(true);
+      const data = await api("/jobs", {
+        method: "POST",
+        body: JSON.stringify({ repoUrl }),
       });
-
-      const data = await response.json();
-
-      if(response.ok){
-        setJobId(data.jobId);
-        setMessage("Job created successfully");
-        setMessageType("success");
-      }
-      else{
-        setMessage(data.error || "Something went wrong");
-        setMessageType("error");
-      }
-    }
-    catch (err){
-      console.log(err);
-      setMessage("Error communicating server");
+      setJobId(data.jobId);
+      setJobStatus(data.status || "queued");
+      setMessage("Job queued. We will generate docs automatically.");
+      setMessageType("success");
+    } catch (err) {
+      setMessage(err.message || "Failed to create job");
       setMessageType("error");
+    } finally {
+      setLoading(false);
     }
-
-    setIsSubmitting(false);
   };
 
   const handleCheckStatus = async () => {
-    if(!jobId) return;
+    if (!jobId) return;
+    try {
+      const data = await api(`/jobs/${jobId}`);
+      setJobStatus(data.status);
+      setJobResult(data.result || null);
 
-    try{
-      const response = await fetch(`http://localhost:4000/jobs/${jobId}`);
-      const data = await response.json();
-
-      if(response.ok){
-        setJobStatus(data.status);
-        setJobResult(data.result || null);
-
-        if(data.status === "completed"){
-          setJobStatus("Job completed");
-          setJobResult("success")
-        }
-        else if (data.status === "error") {
-          setMessage(data.error || "Job failed.");
-        }
-        else{
-          setMessage(`Job status: ${data.status}`);
-          setMessageType("info")
-        }
-      }
-      else{
-        setMessage(data.error || "Failed to fetch job status");
-        setMessageType("error");
-      }
-    }
-    catch (err){
-      console.log(err);
-      setMessage("Error communicationg with server while checking status");
-      setMessageType("error");
-    }
-  }
-
-  const handleGenerateDocs = async () => {
-    if(!jobId) return;
-
-    setIsGeneratingDocs(true);
-    setMessage("");
-    setMessageType("");
-
-    try{
-      const response = await fetch(`http://localhost:4000/jobs/${jobId}/read-files`);
-      const readData = await response.json();
-
-      if(!response.ok){
-        setMessage(readData.error || "Failed to read file");
-        setMessageType("error");
-        setIsGeneratingDocs(false);
-        return;
-      }
-
-      const genRes = await fetch(`http://localhost:4000/jobs/${jobId}/generate-docs`,{
-        method: "POST",
-      });
-      const genData = await genRes.json();
-
-      if(genRes.ok){
-        setdocs(genData.docs || []);
-        setMessage("Docs generated");
+      if (data.status === "docs-generated") {
+        setMessage("Docs generated successfully");
         setMessageType("success");
-      }
-      else{
-        setMessage(genData.error || "Failed to generate docs");
+        await fetchDocsList();
+      } else if (data.status === "error") {
+        setMessage(data.error || "Job failed");
         setMessageType("error");
+      } else {
+        setMessage(`Job status: ${data.status}`);
+        setMessageType("info");
       }
-    }
-    catch(err){
-      console.error(err);
-      setMessage("Error while generating docs");
+    } catch (err) {
+      setMessage(err.message || "Failed to fetch job status");
       setMessageType("error");
     }
-    setIsGeneratingDocs(false);
-  }
+  };
 
-  useEffect( () => {
-    if(!jobId) return;
+  const fetchDocsList = async () => {
+    if (!jobId) return;
+    try {
+      const data = await api(`/jobs/${jobId}/docs-list`);
+      setDocsList(data.files || []);
+    } catch (err) {
+      setMessage(err.message || "Failed to list docs");
+      setMessageType("error");
+    }
+  };
 
-    if(jobStatus === "completed") return;
+  const handleViewDoc = async (path) => {
+    if (!jobId || !path) return;
+    try {
+      const data = await api(`/jobs/${jobId}/docs-file?path=${encodeURIComponent(path)}`);
+      setDocContent(data);
+    } catch (err) {
+      setMessage(err.message || "Failed to read doc file");
+      setMessageType("error");
+    }
+  };
 
-    const intervalId = setInterval(() => {
-      console.log("Auto checking job status...");
+  // Poll status every 3s until docs are ready or error
+  useEffect(() => {
+    if (!jobId) return;
+    if (jobStatus === "docs-generated" || jobStatus === "error") return;
+
+    const timer = setInterval(() => {
       handleCheckStatus();
     }, 3000);
-
-    return () => clearInterval(intervalId);
-  }, [jobId, jobStatus])
+    return () => clearInterval(timer);
+  }, [jobId, jobStatus]);
 
   return (
-  <div>
-    <h1>RepoMind</h1>
-    <p>RepoMind is a tool that will require a github repository url to generate the detailed readme.md file for the repository.</p>
-    <form onSubmit={handleSubmit}>
-      <label for='url'>Enter Your Github Repository URL: </label>
-      <input type='url' placeholder='https://github.com/user/repo'
-        value={repoUrl}
-        onChange={(e)=>{
-          setRepoUrl(e.target.value);
-          setMessage("");
-          setMessageType("");
-        }}
-      ></input>
-      <button type="submit" disabled={isSubmitting}>
-        {isSubmitting ? "Submitting..." : "Submit"}
-      </button>
-    </form>
-    {message && (
-      <p
-        style={{
-          marginTop: "12px",
-          color: messageType === "error" ? "red" : "green",
-          fontSize: "0.9rem",
-        }}
-      >
-        {message}
-      </p>
-    )}
+    <div className="app">
+      <h1>RepoMind</h1>
+      <p>Enter a GitHub repo URL to generate AI documentation.</p>
 
-    {jobId && (
-      <div
-        style={{
-          marginTop: "15px",
-          color: "#333",
-        }}
-      >
-        <p style={{
-          marginTop: "15px",
-          color: "#333"  
-        }}>
-        Job created with Id: <strong>{jobId}</strong>
+      <form onSubmit={handleSubmit} className="form">
+        <label htmlFor="url">GitHub repository URL</label>
+        <input
+          id="url"
+          type="url"
+          placeholder="https://github.com/user/repo"
+          value={repoUrl}
+          onChange={(e) => setRepoUrl(e.target.value)}
+          disabled={loading}
+        />
+        <button type="submit" disabled={loading}>
+          {loading ? "Submitting..." : "Submit"}
+        </button>
+      </form>
+
+      {message && (
+        <p className={`msg ${messageType}`}>
+          {message}
         </p>
-        <button
-          type="button"
-          onClick={handleCheckStatus}
-          style={{ marginTop: "8px" }}
-        >
-          Check Job Status
-        </button>
+      )}
 
-        <button
-          type="button"
-          onClick={handleGenerateDocs}
-          style={{marginTop:"8px", marginLeft:"8px"}}
-          disabled={isGeneratingDOcs}
-        >
-          {isGeneratingDOcs ? "Generating docs..." : "Generate Docs"}
-        </button>
+      {jobId && (
+        <div className="card">
+          <p>Job ID: <strong>{jobId}</strong></p>
+          <p>Status: <strong>{jobStatus || "queued"}</strong></p>
+          <div className="actions">
+            <button type="button" onClick={handleCheckStatus}>Refresh Status</button>
+            {jobResult && (
+              <a href={`${API_BASE}${jobResult}?download=true`} target="_blank" rel="noreferrer">
+                Download Zip
+              </a>
+            )}
+          </div>
+        </div>
+      )}
 
-        {jobStatus && (
-         <p style={{ marginTop: "8px" }}>
-          Current job status : <strong>{jobStatus}</strong>
-         </p> 
-        )}
-
-        {jobResult && (
-          <p style={{marginTop:"8px"}}>
-            Docs link: {" "}
-            <a href={jobResult} target="_blank" rel="nonreferree">
-              {jobResult}
-            </a>
-          </p>
-        )}
-      </div>
-    )}
-    {docs.lenth > 0 && (
-      <div style={{ margintop: "24px"}}>
-        <h2>Generated Documentation</h2>
-        <ul style={{ listStyle:"none", paddingLeft: 0}}>
-          {docs.map((docs) => {
-            <li
-              key={docs.path}
-              style={{
-                bborder: "1px solid #ddd",
-                borderradius: "8px",
-                padding: "12px",
-                marginBottom: "10px",
-              }}
-            >
-              <p>
-                <strong>File:</strong>{docs.path}
-              </p>
-              <p>
-                <strong>Language:</strong>{docs.lang}
-              </p>
-              <p>
-                <strong>Summary:</strong>{docs.summary}
-              </p>
-              {docs.details && (
-                <pre
-                  style={{
-                    background: "#f7f7f7",
-                    padding: "8px",
-                    borderRadius: "6px",
-                    whiteSpace: "pre-wrap"
-                  }}
-                >
-                  {docs.details}
-                </pre>
+      {hasDocs && (
+        <div className="docs">
+          <h2>Generated Docs</h2>
+          <div className="docs-grid">
+            <div className="docs-list">
+              <ul>
+                {docsList.map((file) => (
+                  <li key={file}>
+                    <button onClick={() => handleViewDoc(file)}>
+                      {file}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="docs-viewer">
+              {docContent ? (
+                <>
+                  <h3>{docContent.path}</h3>
+                  <pre>{docContent.content}</pre>
+                </>
+              ) : (
+                <p>Select a file to view its content.</p>
               )}
-            </li>
-          })}
-        </ul>
-      </div>
-    )
-    }
-  </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
