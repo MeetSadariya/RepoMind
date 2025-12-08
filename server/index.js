@@ -7,6 +7,9 @@ const scanFiles = require("./utils/fileScanner");
 const filterImpFiles = require('./utils/filterImpFiles');
 const readFileContent = require('./utils/readFileContent');
 const generateFakeDocs = require('./utils/generateFakeDocs');
+const writeDocsToDisk = require('./utils/writeDocsToDisk');
+const zipFolder = require('./utils/zipFolder');
+const listDocs = require('./utils/listDocs');
 
 const app = express();
 app.use(cors());
@@ -195,6 +198,178 @@ app.post("/jobs/:id/generate-docs", (req,res) => {
     }
 
 });
+
+app.post("/jobs/:id/save-docs", (req,res) => {
+    const job = jobs[req.params.id];
+
+    if(!job){
+        return res.status(404).json({ error: "Job not found" });
+    }
+
+    if(!job.docs || !Array.isArray(job.docs) || job.docs.length === 0 ){
+        return res.status(404).json({ error: "No docs found on job. Call /generate-docs first" });
+    }
+
+    try{
+        const docsDir = writeDocsToDisk(job.docs, job.path);
+
+        job.docsDir = docsDir;
+        job.result = docsDir;
+
+        return res.json({
+            message: "Docs written to disk successfully",
+            docsDir,
+        })
+    }
+    catch(err){
+        console.error(err);
+        return res.status(500).json({
+            error: "Failed to write docs to disk",
+            details: err.message,
+        })
+    }
+});
+
+app.get("/jobs/:id/docs-zip", async (req, res) => {
+  const job = jobs[req.params.id];
+
+  if (!job) {
+    return res.status(404).json({ error: "Job not found" });
+  }
+  
+  if (!job.docsDir) {
+    return res.status(400).json({ error: "Docs not saved yet. Call /save-docs first" });
+  }
+
+  try {
+    const absoluteJobPath = path.resolve(job.path);
+    const absoluteDocsDir = path.resolve(job.docsDir);
+    const zipPath = path.join(absoluteJobPath, "docs.zip");
+    
+    if (!fs.existsSync(absoluteDocsDir)) {
+      return res.status(404).json({ error: `Docs directory does not exist: ${absoluteDocsDir}` });
+    }
+
+    console.log(`Creating zip from ${absoluteDocsDir} to ${zipPath}`);
+
+    await zipFolder(absoluteDocsDir, zipPath);
+    
+    if (!fs.existsSync(zipPath)) {
+      throw new Error("Zip file was not created successfully");
+    }
+
+    const stats = fs.statSync(zipPath);
+    console.log(`Zip file created successfully: ${zipPath} (${stats.size} bytes)`);
+
+    job.docsZip = zipPath;
+
+    const wantsFile = req.query.download === 'true' || req.query.download === '1';
+
+    if (!wantsFile) {
+      return res.json({
+        message: "Zip file created successfully",
+        zipPath: zipPath,
+        size: stats.size,
+        sizeKB: (stats.size / 1024).toFixed(2),
+        downloadUrl: `/jobs/${req.params.id}/docs-zip?download=true`,
+        note: "Add ?download=true to the URL to download the file, or use a browser",
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="docs.zip"');
+    res.setHeader('Content-Length', stats.size);
+
+    const fileStream = fs.createReadStream(zipPath);
+    
+    fileStream.on('error', (err) => {
+      console.error('File stream error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to read zip file", details: err.message });
+      } else {
+        res.end();
+      }
+    });
+
+    fileStream.on('end', () => {
+      console.log('File sent successfully');
+    });
+
+    fileStream.pipe(res);
+
+  } catch (err) {
+    console.error("Error creating zip:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to create zip file", details: err.message });
+    }
+  }
+});
+
+app.get("/jobs/:id/docs-list", (req,res) => {
+    const job = jobs[req.params.id];
+
+    if(!job){
+        return res.status(404).json({ error: "Job not found" });
+    }
+
+    if(!job.docsDir || !fs.existsSync(job.docsDir)){
+        return res.status(400).json({
+            error: "Docs not found. Make sure /generate-docs and /save-docs were calles",
+        });
+    }
+
+    try{
+        const files = listDocs(join.docsDir);
+        return res.json({files});
+    }
+    catch(err){
+        return res.status(500).json({
+            error: "Failed to list docs",
+            details: err.message,
+        });
+    }
+});
+
+app.get("/jobs/:id/docs-file", (req,res) => {
+    const job = jobs[req.params.id];
+    const filePath = req.query.path;
+
+    if(!job){
+        return res.status(404).json({ error: "Job not found" });
+    }
+
+    if(!filePath){
+        return res.status(400).json({ error: "Path query is required" });
+    }
+
+    if(!job.docsDir || !fs.existsSync(job.docsDir)){
+        return res.status(400).json({
+            errir: "Docs not found. Run /generate-docs and /save-docs first"
+        });
+    }
+
+    const fullPath = path.join(job.docsDir, filePath);
+
+    try{
+        if(!fs.existsSync(job.docsDir)){
+            return res.status(404).json({
+                error: "Doc file not found"
+            })
+        }
+
+        const content = fs.readFileSync(fullPath, "utf-8");
+        return res.json({path: filePath, content});
+    }
+    catch(err){
+        console.error(err);
+        return res.status(500).json({
+            error: "Failed to read doc file",
+            details: err.message
+        })
+    }
+})
+
 
 const port = 4000;
 app.listen(port, () => {
