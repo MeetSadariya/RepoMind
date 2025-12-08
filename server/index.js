@@ -1,4 +1,5 @@
 require("dotenv").config();
+require("dotenv").config();
 const express = require('express');
 const cors = require('cors');
 const simpleGit = require("simple-git");
@@ -212,6 +213,7 @@ app.get("/jobs/:id/read-files", (req,res) => {
 }); 
 
 app.post("/jobs/:id/generate-docs", async (req,res) => {
+app.post("/jobs/:id/generate-docs", async (req,res) => {
     const job = jobs[req.params.id];
 
     if(!job){
@@ -230,6 +232,9 @@ app.post("/jobs/:id/generate-docs", async (req,res) => {
         const docs = await generateAIDocs(job.fileContents, (current, total, filePath) => {
             console.log(`AI generating docs ${current}/${total} for ${filePath}`);
         });
+        const docs = await generateAIDocs(job.fileContents, (current, total, filePath) => {
+            console.log(`AI generating docs ${current}/${total} for ${filePath}`);
+        });
         job.docs = docs;
         job.status = "docs-generated";
 
@@ -239,6 +244,7 @@ app.post("/jobs/:id/generate-docs", async (req,res) => {
         console.log(err);
         job.status = "error";
         return res.status(500).json({
+            error: "Failed to generate docs via AI",
             error: "Failed to generate docs via AI",
             details: err.message,
         })
@@ -368,6 +374,9 @@ app.get("/jobs/:id/docs-list", (req,res) => {
      try{
         const docsDir = path.resolve(job.docsDir);
         const files = listDocs(docsDir);
+     try{
+        const docsDir = path.resolve(job.docsDir);
+        const files = listDocs(docsDir);
         return res.json({files});
     }
     catch(err){
@@ -393,6 +402,7 @@ app.get("/jobs/:id/docs-file", (req,res) => {
     if(!job.docsDir || !fs.existsSync(job.docsDir)){
         return res.status(400).json({
             error: "Docs not found. Run /generate-docs and /save-docs first"
+            error: "Docs not found. Run /generate-docs and /save-docs first"
         });
     }
 
@@ -403,11 +413,20 @@ app.get("/jobs/:id/docs-file", (req,res) => {
     if(!fullPath.startsWith(docsDir)){
         return res.status(400).json({ error: "Invalid file path" });
     }
+    const docsDir = path.resolve(job.docsDir);
+    const fullPath = path.resolve(docsDir, filePath);
+
+    // Prevent path traversal outside docsDir
+    if(!fullPath.startsWith(docsDir)){
+        return res.status(400).json({ error: "Invalid file path" });
+    }
 
     try{
         if(!fs.existsSync(fullPath)){
+        if(!fs.existsSync(fullPath)){
             return res.status(404).json({
                 error: "Doc file not found"
+            });
             });
         }
 
@@ -420,7 +439,9 @@ app.get("/jobs/:id/docs-file", (req,res) => {
             error: "Failed to read doc file",
             details: err.message
         });
+        });
     }
+});
 });
 
 
