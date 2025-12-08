@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require('express');
 const cors = require('cors');
 const simpleGit = require("simple-git");
@@ -6,16 +7,77 @@ const path = require('path');
 const scanFiles = require("./utils/fileScanner");
 const filterImpFiles = require('./utils/filterImpFiles');
 const readFileContent = require('./utils/readFileContent');
-const generateFakeDocs = require('./utils/generateFakeDocs');
 const writeDocsToDisk = require('./utils/writeDocsToDisk');
 const zipFolder = require('./utils/zipFolder');
 const listDocs = require('./utils/listDocs');
-
+const generateAIDocs = require("./utils/generateAIDocs");
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const jobs = {};
+
+const workspaceRoot = path.join(__dirname, "workspace");
+if (!fs.existsSync(workspaceRoot)) {
+  fs.mkdirSync(workspaceRoot, { recursive: true });
+}
+
+async function runJobPipeline(jobId) {
+  const job = jobs[jobId];
+  if (!job) return;
+
+  try {
+    // 1) Clone
+    job.status = "cloning";
+
+    const git = simpleGit();
+    await git.clone(job.repoUrl, job.path);
+
+    job.status = "scanning";
+
+    // 2) Scan files
+    const allFiles = scanFiles(job.path);
+    job.files = allFiles;
+
+    // 3) Filter important files
+    job.status = "filtering";
+    const impFiles = filterImpFiles(allFiles);
+    job.impFiles = impFiles;
+
+    // 4) Read contents
+    job.status = "reading";
+    const fileContents = readFileContent(impFiles, job.path);
+    job.fileContents = fileContents;
+
+    // 5) Generate AI docs
+    job.status = "ai-generating";
+    const docs = await generateAIDocs(fileContents, (current, total, filePath) => {
+      console.log(`AI docs ${current}/${total} for ${filePath}`);
+    });
+    job.docs = docs;
+
+    // 6) Save docs to disk
+    job.status = "saving-docs";
+    const docsDir = writeDocsToDisk(docs, job.path);
+    job.docsDir = docsDir;
+
+    // 7) Zip docs
+    job.status = "zipping-docs";
+    const zipPath = path.join(job.path, "docs.zip");
+    await zipFolder(docsDir, zipPath);
+    job.docsZip = zipPath;
+
+    // 8) Done
+    job.status = "docs-generated";
+    job.result = `/jobs/${jobId}/docs-zip`; // handy for frontend
+
+    console.log(`✅ Job ${jobId} completed: docs generated`);
+  } catch (err) {
+    console.error(`❌ Job ${jobId} failed:`, err.message);
+    job.status = "error";
+    job.error = err.message;
+  }
+}
 
 app.get('/', (req,res) => {
     res.send("Hello World!");
@@ -45,34 +107,14 @@ app.post('/jobs', (req,res) => {
         status: "received"
     });
 
+    runJobPipeline(jobId);
 
-    setTimeout( async () => {
-        try{
-            jobs[jobId].status = "cloning";
-            console.log(`Cloning repo for job ${jobId}...`);
-
-            const git = simpleGit();
-            await git.clone(repoUrl, jobs[jobId].path);
-
-            jobs[jobId].status = "cloned";
-            console.log(`Repo cloned successfully for job ${jobId}`);
-
-            jobs[jobId].status = "processing";
-            console.log(`Job ${jobId} is now processing...`);
-
-            setTimeout(() => {
-                jobs[jobId].status = "completed";
-                jobs[jobId].result = "https://example.com/doc-output.zip";
-                console.log(`Job ${jobId} completed`);
-            }, 5000);
-        }
-        catch (err){
-            jobs[jobId].status = "error";
-            jobs[jobId].error = err.message;
-            console.log(`CLone failed for job ${jobId}: `, err.message);
-        }
-    }, 2000);
+    res.json({
+        jobId,
+        status: "queued",
+    });
 });
+    
 
 app.get('/jobs/:id', (req,res) => {
     const job = jobs[req.params.id];
@@ -165,7 +207,7 @@ app.get("/jobs/:id/read-files", (req,res) => {
     }
 }); 
 
-app.post("/jobs/:id/generate-docs", (req,res) => {
+app.post("/jobs/:id/generate-docs", async (req,res) => {
     const job = jobs[req.params.id];
 
     if(!job){
@@ -181,9 +223,10 @@ app.post("/jobs/:id/generate-docs", (req,res) => {
     try{
         job.status = "ai-generating";
 
-        const docs = generateFakeDocs(job.fileContents);
+        const docs = await generateAIDocs(job.fileContents, (current, total, filePath) => {
+            console.log(`AI generating docs ${current}/${total} for ${filePath}`);
+        });
         job.docs = docs;
-
         job.status = "docs-generated";
 
         res.json({docs});
@@ -192,11 +235,10 @@ app.post("/jobs/:id/generate-docs", (req,res) => {
         console.log(err);
         job.status = "error";
         return res.status(500).json({
-            error: "Failed to generate docs",
+            error: "Failed to generate docs via AI",
             details: err.message,
         })
     }
-
 });
 
 app.post("/jobs/:id/save-docs", (req,res) => {
@@ -319,8 +361,9 @@ app.get("/jobs/:id/docs-list", (req,res) => {
         });
     }
 
-    try{
-        const files = listDocs(join.docsDir);
+     try{
+        const docsDir = path.resolve(job.docsDir);
+        const files = listDocs(docsDir);
         return res.json({files});
     }
     catch(err){
@@ -345,17 +388,23 @@ app.get("/jobs/:id/docs-file", (req,res) => {
 
     if(!job.docsDir || !fs.existsSync(job.docsDir)){
         return res.status(400).json({
-            errir: "Docs not found. Run /generate-docs and /save-docs first"
+            error: "Docs not found. Run /generate-docs and /save-docs first"
         });
     }
 
-    const fullPath = path.join(job.docsDir, filePath);
+    const docsDir = path.resolve(job.docsDir);
+    const fullPath = path.resolve(docsDir, filePath);
+
+    // Prevent path traversal outside docsDir
+    if(!fullPath.startsWith(docsDir)){
+        return res.status(400).json({ error: "Invalid file path" });
+    }
 
     try{
-        if(!fs.existsSync(job.docsDir)){
+        if(!fs.existsSync(fullPath)){
             return res.status(404).json({
                 error: "Doc file not found"
-            })
+            });
         }
 
         const content = fs.readFileSync(fullPath, "utf-8");
@@ -366,9 +415,9 @@ app.get("/jobs/:id/docs-file", (req,res) => {
         return res.status(500).json({
             error: "Failed to read doc file",
             details: err.message
-        })
+        });
     }
-})
+});
 
 
 const port = 4000;

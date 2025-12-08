@@ -125,7 +125,7 @@ function App() {
 
       if(genRes.ok){
         setdocs(genData.docs || []);
-        setMessage("Docs generated");
+        setMessage("AI Docs generated");
         setMessageType("success");
       }
       else{

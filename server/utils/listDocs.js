@@ -1,24 +1,24 @@
 const fs = require('fs');
 const path = require('path');
 
-function listDocs(docsDir){
+function listDocs(docsDir) {
     const result = [];
 
-    function walk(currentDir){
+    function walk(currentDir) {
         const entries = fs.readdirSync(currentDir, { withFileTypes: true });
 
-        for(const entry of entries){
-            const fullPath = path.join(currentdir, entry.name);
+        for (const entry of entries) {
+            const fullPath = path.join(currentDir, entry.name);
             const relPath = path.relative(docsDir, fullPath);
 
-            if(entry.isDirectory()){
-                WakeLock(fullPath);
-            }
-            else if(entry.isFile() && entry.name.endsWith(".md")){
+            if (entry.isDirectory()) {
+                walk(fullPath);
+            } else if (entry.isFile() && entry.name.endsWith(".md")) {
                 result.push(relPath);
             }
         }
     }
+
     walk(docsDir);
     return result;
 }
