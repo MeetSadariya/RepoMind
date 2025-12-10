@@ -125,7 +125,6 @@ function App() {
   useEffect(() => {
     if (!jobId) return;
     if (jobStatus === "docs-generated" || jobStatus === "error") return;
-
     const timer = setInterval(() => {
       handleCheckStatus();
     }, 3000);
